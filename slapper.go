@@ -19,7 +19,13 @@ import (
 )
 
 const (
-	statsLines = 3
+	statsLines             = 3
+	movingWindowsSize      = 10 // seconds
+	screenRefreshFrequency = 10 // per second
+	screenRefreshInterval  = time.Second / screenRefreshFrequency
+
+	rateIncreaseStep = 100
+	rateDecreaseStep = 100
 )
 
 var (
@@ -27,8 +33,8 @@ var (
 	responsesReceived counter
 	responses         [1024]counter
 
-	timingsOk  []counter
-	timingsBad []counter
+	timingsOk  [][]counter
+	timingsBad [][]counter
 
 	terminalWidth  uint
 	terminalHeight uint
@@ -44,12 +50,17 @@ var (
 func resetStats() {
 	requestsSent.Store(0)
 	responsesReceived.Store(0)
-	for i := 0; i < len(timingsOk); i++ {
-		timingsOk[i].Store(0)
+
+	for _, ok := range timingsOk {
+		for i := 0; i < len(ok); i++ {
+			ok[i].Store(0)
+		}
 	}
 
-	for i := 0; i < len(timingsBad); i++ {
-		timingsBad[i].Store(0)
+	for _, bad := range timingsBad {
+		for i := 0; i < len(bad); i++ {
+			bad[i].Store(0)
+		}
 	}
 
 	for i := 0; i < len(responses); i++ {
@@ -87,6 +98,11 @@ func newTargeter(targets string) (*targeter, error) {
 	}
 
 	trgt := &targeter{}
+
+	// syntax
+	// GET <url>\n
+	// $ <body>\n
+	// \n
 
 	for {
 		var method string
@@ -173,13 +189,17 @@ func attack(trgt *targeter, timeout time.Duration, ch <-chan time.Time, quit <-c
 			if request, err := trgt.nextRequest(); err == nil {
 				requestsSent.Add(1)
 
-				now := time.Now()
+				start := time.Now()
 				response, err := client.Do(request)
-				elapsed := time.Since(now)
+				now := time.Now()
+
+				tOk, tBad := getTimingsSlot(now)
+
+				elapsed := now.Sub(start)
 				elapsedMs := float64(elapsed) / float64(time.Millisecond)
 				elapsedBucket := int(math.Log(elapsedMs) / math.Log(logBase))
-				if elapsedBucket >= len(timingsOk) {
-					elapsedBucket = len(timingsOk) - 1
+				if elapsedBucket >= len(tOk) {
+					elapsedBucket = len(tOk) - 1
 				} else if elapsedBucket < 0 {
 					elapsedBucket = 0
 				}
@@ -191,17 +211,17 @@ func attack(trgt *targeter, timeout time.Duration, ch <-chan time.Time, quit <-c
 					response.Body.Close()
 
 					if status := response.StatusCode; status >= 200 && status < 300 {
-						timingsOk[elapsedBucket].Add(1)
+						tOk[elapsedBucket].Add(1)
 						responses[status].Add(1)
 					} else {
 						// if elapsedBucket < 0 || elapsedBucket >= len(timingsBad) {
 						// panic(fmt.Sprintf("elapsedBucket=%d elapsedMs=%f", elapsedBucket, elapsedMs))
 						// }
-						timingsBad[elapsedBucket].Add(1)
+						tBad[elapsedBucket].Add(1)
 						responses[status].Add(1)
 					}
 				} else {
-					timingsBad[elapsedBucket].Add(1)
+					tBad[elapsedBucket].Add(1)
 					responses[700].Add(1)
 				}
 			}
@@ -227,10 +247,6 @@ func reporter(quit <-chan struct{}) {
 		}
 	}()
 
-	// scratch arrays
-	tOk := make([]int64, len(timingsOk))
-	tBad := make([]int64, len(timingsBad))
-
 	colors := []string{
 		"\033[38;5;46m", "\033[38;5;47m", "\033[38;5;48m", "\033[38;5;49m", // green
 		"\033[38;5;149m", "\033[38;5;148m", "\033[38;5;179m", "\033[38;5;176m", // yellow
@@ -238,19 +254,30 @@ func reporter(quit <-chan struct{}) {
 	}
 
 	colorMultiplier := float64(len(colors)) / float64(buckets)
+	barWidth := plotWidth - 40 // reserve some space on right and left
 
-	for tick := time.Tick(100 * time.Millisecond); ; {
+	ticker := time.Tick(screenRefreshInterval)
+	for {
 		select {
-		case <-tick:
+		case <-ticker:
+			// scratch arrays
+			tOk := make([]int64, len(timingsOk))
+			tBad := make([]int64, len(timingsBad))
+
 			// need to understand how long in longest bar,
 			// also take a change to copy arrays to have consistent view
 
 			max := int64(1)
 			for i := 0; i < len(timingsOk); i++ {
-				tOk[i] = timingsOk[i].Load()
-				tBad[i] = timingsBad[i].Load()
-				if sum := tOk[i] + tBad[i]; sum > max {
-					max = sum
+				ok := timingsOk[i]
+				bad := timingsBad[i]
+
+				for j := 0; j < len(ok); j++ {
+					tOk[j] += ok[j].Load()
+					tBad[j] += bad[j].Load()
+					if sum := tOk[j] + tBad[j]; sum > max {
+						max = sum
+					}
 				}
 			}
 
@@ -273,7 +300,6 @@ func reporter(quit <-chan struct{}) {
 			}
 			fmt.Print("\n\n")
 
-			barWidth := plotWidth - 40 // reserve some space on right and left
 			width := float64(barWidth) / float64(max)
 			for bkt := 0; bkt < buckets; bkt++ {
 				startMs := math.Pow(logBase, float64(bkt))
@@ -306,7 +332,6 @@ func reporter(quit <-chan struct{}) {
 					bytes.Repeat([]byte(" "), widthLeft),
 					"\033[0m")
 			}
-
 		case <-quit:
 			return
 		}
@@ -336,9 +361,9 @@ keyPressListenerLoop:
 				case 'r':
 					resetStats()
 				case 'k': // up
-					increase <- 100
+					increase <- rateIncreaseStep
 				case 'j':
-					decrease <- 100
+					decrease <- rateDecreaseStep
 				}
 			}
 		case term.EventError:
@@ -376,6 +401,37 @@ func ticker(rate int, quit <-chan struct{}) (<-chan time.Time, chan<- int, chan<
 	return ticker, increase, decrease
 }
 
+func getTimingsSlot(now time.Time) ([]counter, []counter) {
+	n := int(now.UnixNano() / 100000000)
+	slot := n % len(timingsOk)
+	return timingsOk[slot], timingsBad[slot]
+}
+
+func initializeTimingsBucket(buckets int) {
+	timingsOk = make([][]counter, movingWindowsSize*screenRefreshFrequency)
+	for i := 0; i < len(timingsOk); i++ {
+		timingsOk[i] = make([]counter, buckets)
+	}
+
+	timingsBad = make([][]counter, movingWindowsSize*screenRefreshFrequency)
+	for i := 0; i < len(timingsBad); i++ {
+		timingsBad[i] = make([]counter, buckets)
+	}
+
+	go func() {
+		for now := range time.Tick(screenRefreshInterval) {
+			tOk, tBad := getTimingsSlot(now)
+			for i := 0; i < len(tOk); i++ {
+				tOk[i].Store(0)
+			}
+
+			for i := 0; i < len(tBad); i++ {
+				tBad[i].Store(0)
+			}
+		}
+	}()
+}
+
 func main() {
 	workers := flag.Int("workers", 8, "Number of workers")
 	timeout := flag.Duration("timeout", 30*time.Second, "Requests timeout")
@@ -396,8 +452,7 @@ func main() {
 	buckets = plotHeight
 	logBase = math.Pow(deltaY, 1/float64(buckets))
 
-	timingsOk = make([]counter, buckets)
-	timingsBad = make([]counter, buckets)
+	initializeTimingsBucket(buckets)
 
 	quit := make(chan struct{}, 1)
 	ticker, increase, decrease := ticker(*rate, quit)
@@ -407,6 +462,7 @@ func main() {
 		panic(err)
 	}
 
+	// start attackers
 	var wg sync.WaitGroup
 	for i := 0; i < *workers; i++ {
 		wg.Add(1)
