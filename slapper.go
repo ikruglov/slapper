@@ -231,6 +231,14 @@ func reporter(quit <-chan struct{}) {
 	tOk := make([]int64, len(timingsOk))
 	tBad := make([]int64, len(timingsBad))
 
+	colors := []string{
+		"\033[38;5;46m", "\033[38;5;47m", "\033[38;5;48m", "\033[38;5;49m", // green
+		"\033[38;5;149m", "\033[38;5;148m", "\033[38;5;179m", "\033[38;5;176m", // yellow
+		"\033[38;5;169m", "\033[38;5;168m", "\033[38;5;197m", "\033[38;5;196m", // red
+	}
+
+	colorMultiplier := float64(len(colors)) / float64(buckets)
+
 	for tick := time.Tick(100 * time.Millisecond); ; {
 		select {
 		case <-tick:
@@ -284,7 +292,7 @@ func reporter(quit <-chan struct{}) {
 				widthBad := int(float64(tBad[bkt]) * width)
 				widthLeft := barWidth - widthOk - widthBad
 
-				fmt.Printf("%10s ms: [%s%5d%s/%s%5d%s] %s%s%s \n",
+				fmt.Printf("%10s ms: [%s%6d%s/%s%6d%s] %s%s%s%s%s \n",
 					label,
 					"\033[32m",
 					tOk[bkt],
@@ -292,10 +300,13 @@ func reporter(quit <-chan struct{}) {
 					"\033[31m",
 					tBad[bkt],
 					"\033[0m",
+					colors[int(float64(bkt)*colorMultiplier)],
 					bytes.Repeat([]byte("E"), widthBad),
 					bytes.Repeat([]byte("*"), widthOk),
-					bytes.Repeat([]byte(" "), widthLeft))
+					bytes.Repeat([]byte(" "), widthLeft),
+					"\033[0m")
 			}
+
 		case <-quit:
 			return
 		}
