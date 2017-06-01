@@ -191,6 +191,10 @@ func attack(trgt *targeter, timeout time.Duration, ch <-chan time.Time, quit <-c
 
 				start := time.Now()
 				response, err := client.Do(request)
+				if err == nil {
+					_, err = ioutil.ReadAll(response.Body)
+					response.Body.Close()
+				}
 				now := time.Now()
 
 				tOk, tBad := getTimingsSlot(now)
@@ -207,9 +211,6 @@ func attack(trgt *targeter, timeout time.Duration, ch <-chan time.Time, quit <-c
 				responsesReceived.Add(1)
 
 				if err == nil {
-					ioutil.ReadAll(response.Body)
-					response.Body.Close()
-
 					if status := response.StatusCode; status >= 200 && status < 300 {
 						tOk[elapsedBucket].Add(1)
 						responses[status].Add(1)
