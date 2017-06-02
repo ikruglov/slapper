@@ -210,11 +210,9 @@ func attack(trgt *targeter, timeout time.Duration, ch <-chan time.Time, quit <-c
 
 				responsesReceived.Add(1)
 
-				var status int
+				status := 0
 				if err == nil {
 					status = response.StatusCode
-				} else {
-					status = 700
 				}
 
 				responses[status].Add(1)
