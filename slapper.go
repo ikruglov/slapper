@@ -210,20 +210,18 @@ func attack(trgt *targeter, timeout time.Duration, ch <-chan time.Time, quit <-c
 
 				responsesReceived.Add(1)
 
+				var status int
 				if err == nil {
-					if status := response.StatusCode; status >= 200 && status < 300 {
-						tOk[elapsedBucket].Add(1)
-						responses[status].Add(1)
-					} else {
-						// if elapsedBucket < 0 || elapsedBucket >= len(timingsBad) {
-						// panic(fmt.Sprintf("elapsedBucket=%d elapsedMs=%f", elapsedBucket, elapsedMs))
-						// }
-						tBad[elapsedBucket].Add(1)
-						responses[status].Add(1)
-					}
+					status = response.StatusCode
+				} else {
+					status = 700
+				}
+
+				responses[status].Add(1)
+				if status >= 200 && status < 300 {
+					tOk[elapsedBucket].Add(1)
 				} else {
 					tBad[elapsedBucket].Add(1)
-					responses[700].Add(1)
 				}
 			}
 		case <-quit:
