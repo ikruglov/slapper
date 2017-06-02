@@ -433,7 +433,7 @@ func main() {
 	workers := flag.Int("workers", 8, "Number of workers")
 	timeout := flag.Duration("timeout", 30*time.Second, "Requests timeout")
 	targets := flag.String("targets", "stdin", "Targets file")
-	rate := flag.Int("rate", 50, "Requests per second)")
+	rate := flag.Int("rate", 50, "Requests per second")
 	miY := flag.Duration("minY", time.Millisecond, "min on Y axe")
 	maY := flag.Duration("maxY", 100*time.Millisecond, "max on Y axe")
 	flag.Parse()
