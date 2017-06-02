@@ -288,12 +288,12 @@ func reporter(quit <-chan struct{}) {
 			fmt.Printf("\033[96mrate: %4d RPS\033[0m ", currentRate.Load())
 
 			fmt.Print("responses: ")
-			for i, counter := range responses {
+			for status, counter := range responses {
 				if c := counter.Load(); c > 0 {
-					if i == 200 {
-						fmt.Printf("\033[32m[%d]: %-6d\033[0m ", i, c)
+					if status >= 200 && status < 300 {
+						fmt.Printf("\033[32m[%d]: %-6d\033[0m ", status, c)
 					} else {
-						fmt.Printf("\033[31m[%d]: %-6d\033[0m ", i, c)
+						fmt.Printf("\033[31m[%d]: %-6d\033[0m ", status, c)
 					}
 				}
 			}
