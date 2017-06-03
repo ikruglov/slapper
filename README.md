@@ -24,9 +24,9 @@ Usage of ./slapper:
 
 ## Targets syntax
 ```
-GET http://127.0.0.1/_test
-$ {"test":"payload"}
-
+GET http://127.0.0.1/_test\n
+$ {"test":"payload"}\n
+\n
 ```
 
 ## Acknowledgement
