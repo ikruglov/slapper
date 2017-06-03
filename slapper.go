@@ -32,7 +32,7 @@ var (
 	requestsSent      counter
 	responsesReceived counter
 	responses         [1024]counter
-	requestedRate     counter
+	desiredRate       counter
 
 	timingsOk  [][]counter
 	timingsBad [][]counter
@@ -284,7 +284,7 @@ func reporter(quit <-chan struct{}) {
 			fmt.Print("\033[H") // clean screen
 			fmt.Printf("sent: %-6d ", sent)
 			fmt.Printf("in-flight: %-2d ", sent-recv)
-			fmt.Printf("\033[96mrate: %4d/%d RPS\033[0m ", currentRate.Load(), requestedRate.Load())
+			fmt.Printf("\033[96mrate: %4d/%d RPS\033[0m ", currentRate.Load(), desiredRate.Load())
 
 			fmt.Print("responses: ")
 			for status, counter := range responses {
@@ -377,17 +377,17 @@ func ticker(rate int, quit <-chan struct{}) (<-chan time.Time, chan<- int, chan<
 
 	// start main workers
 	go func() {
-		requestedRate.Store(int64(rate))
-		tck := time.Tick(time.Duration(1e9 / requestedRate.Load()))
+		desiredRate.Store(int64(rate))
+		tck := time.Tick(time.Duration(1e9 / desiredRate.Load()))
 
 		for {
 			select {
 			case v := <-increase:
-				requestedRate.Add(int64(v))
-				tck = time.Tick(time.Duration(1e9 / requestedRate.Load()))
+				desiredRate.Add(int64(v))
+				tck = time.Tick(time.Duration(1e9 / desiredRate.Load()))
 			case v := <-decrease:
-				requestedRate.Add(int64(-v))
-				tck = time.Tick(time.Duration(1e9 / requestedRate.Load()))
+				desiredRate.Add(int64(-v))
+				tck = time.Tick(time.Duration(1e9 / desiredRate.Load()))
 			case t := <-tck:
 				ticker <- t
 			case <-quit:
