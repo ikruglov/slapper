@@ -388,7 +388,7 @@ func ticker(rate int, quit <-chan struct{}) (<-chan time.Time, chan<- int, chan<
 				tck = time.Tick(time.Duration(1e9 / requestedRate.Load()))
 			case v := <-decrease:
 				requestedRate.Add(int64(-v))
-				tck = time.Tick(time.Duration(1e9 / requestedRate))
+				tck = time.Tick(time.Duration(1e9 / requestedRate.Load()))
 			case t := <-tck:
 				ticker <- t
 			case <-quit:
