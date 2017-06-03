@@ -284,8 +284,7 @@ func reporter(quit <-chan struct{}) {
 			fmt.Print("\033[H") // clean screen
 			fmt.Printf("sent: %-6d ", sent)
 			fmt.Printf("in-flight: %-2d ", sent-recv)
-			fmt.Printf("requested rate: %4d RPS ", requestedRate.Load())
-			fmt.Printf("\033[96mresponse rate: %4d RPS\033[0m ", currentRate.Load())
+			fmt.Printf("\033[96mrate: %4d/%d RPS\033[0m ", currentRate.Load(), requestedRate.Load())
 
 			fmt.Print("responses: ")
 			for status, counter := range responses {
