@@ -1,6 +1,6 @@
 # slapper
 
-__Another load testing tool__
+__Simple load testing tool with real-time updated histogram of request timings__
 
 ![slapper](https://raw.githubusercontent.com/ikruglov/slapper/master/img/example.gif)
 
