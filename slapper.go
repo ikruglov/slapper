@@ -41,9 +41,9 @@ var (
 	terminalHeight uint
 
 	// plotting vars
-	plotWidth  int
-	plotHeight int
-	buckets    int
+	plotWidth  uint
+	plotHeight uint
+	buckets    uint
 	logBase    float64
 	minY, maxY float64
 )
@@ -252,7 +252,7 @@ func reporter(quit <-chan struct{}) {
 	}
 
 	colorMultiplier := float64(len(colors)) / float64(buckets)
-	barWidth := plotWidth - 40 // reserve some space on right and left
+	barWidth := int(plotWidth) - 40 // reserve some space on right and left
 
 	ticker := time.Tick(screenRefreshInterval)
 	for {
@@ -299,7 +299,7 @@ func reporter(quit <-chan struct{}) {
 			fmt.Print("\n\n")
 
 			width := float64(barWidth) / float64(max)
-			for bkt := 0; bkt < buckets; bkt++ {
+			for bkt := uint(0); bkt < buckets; bkt++ {
 				startMs := math.Pow(logBase, float64(bkt))
 				endMs := math.Pow(logBase, float64(bkt)+1)
 
@@ -405,7 +405,7 @@ func getTimingsSlot(now time.Time) ([]counter, []counter) {
 	return timingsOk[slot], timingsBad[slot]
 }
 
-func initializeTimingsBucket(buckets int) {
+func initializeTimingsBucket(buckets uint) {
 	timingsOk = make([][]counter, movingWindowsSize*screenRefreshFrequency)
 	for i := 0; i < len(timingsOk); i++ {
 		timingsOk[i] = make([]counter, buckets)
@@ -438,15 +438,15 @@ func main() {
 	timeout := flag.Duration("timeout", 30*time.Second, "Requests timeout")
 	targets := flag.String("targets", "stdin", "Targets file")
 	rate := flag.Int("rate", 50, "Requests per second")
-	miY := flag.Duration("minY", time.Millisecond, "min on Y axe")
+	miY := flag.Duration("minY", 0, "min on Y axe (default 0ms)")
 	maY := flag.Duration("maxY", 100*time.Millisecond, "max on Y axe")
 	flag.Parse()
 
 	terminalWidth, _ = terminal.Width()
 	terminalHeight, _ = terminal.Height()
 
-	plotWidth = int(terminalWidth)
-	plotHeight = int(terminalHeight) - statsLines
+	plotWidth = terminalWidth
+	plotHeight = terminalHeight - statsLines
 
 	minY, maxY = float64(*miY/time.Millisecond), float64(*maY/time.Millisecond)
 	deltaY := maxY - minY
