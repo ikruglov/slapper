@@ -86,17 +86,13 @@ type targeter struct {
 
 func newTargeter(targets string) (*targeter, error) {
 	var reader *bufio.Reader
-	if targets == "stdin" {
-		reader = bufio.NewReader(os.Stdin)
-	} else {
-		f, err := os.Open(targets)
-		if err != nil {
-			return nil, err
-		}
-
-		reader = bufio.NewReader(f)
-		defer f.Close()
+	f, err := os.Open(targets)
+	if err != nil {
+		return nil, err
 	}
+
+	reader = bufio.NewReader(f)
+	defer f.Close()
 
 	trgt := &targeter{}
 
@@ -436,7 +432,7 @@ func initializeTimingsBucket(buckets uint) {
 func main() {
 	workers := flag.Uint("workers", 8, "Number of workers")
 	timeout := flag.Duration("timeout", 30*time.Second, "Requests timeout")
-	targets := flag.String("targets", "stdin", "Targets file")
+	targets := flag.String("targets", "", "Targets file")
 	rate := flag.Uint64("rate", 50, "Requests per second")
 	miY := flag.Duration("minY", 0, "min on Y axe (default 0ms)")
 	maY := flag.Duration("maxY", 100*time.Millisecond, "max on Y axe")
