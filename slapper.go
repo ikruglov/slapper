@@ -296,7 +296,7 @@ func reporter(quit <-chan struct{}) {
 					}
 				}
 			}
-			fmt.Print("\n\n")
+			fmt.Print("\r\n\r\n")
 
 			width := float64(barWidth) / float64(max)
 			for bkt := uint(0); bkt < buckets; bkt++ {
@@ -316,7 +316,7 @@ func reporter(quit <-chan struct{}) {
 				widthBad := int(float64(tBad[bkt]) * width)
 				widthLeft := barWidth - widthOk - widthBad
 
-				fmt.Printf("%10s ms: [%s%6d%s/%s%6d%s] %s%s%s%s%s \n",
+				fmt.Printf("%10s ms: [%s%6d%s/%s%6d%s] %s%s%s%s%s \r\n",
 					label,
 					"\033[32m",
 					tOk[bkt],
