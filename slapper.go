@@ -25,7 +25,7 @@ const (
 	screenRefreshInterval  = time.Second / screenRefreshFrequency
 
 	rateIncreaseStep = 100
-	rateDecreaseStep = 100
+	rateDecreaseStep = -100
 )
 
 var (
@@ -336,7 +336,7 @@ func reporter(quit <-chan struct{}) {
 	}
 }
 
-func keyPressListener(increase, decrease chan<- int) {
+func keyPressListener(rateChanger chan<- int64) {
 	// start keyPress listener
 	err := term.Init()
 	if err != nil {
@@ -359,9 +359,9 @@ keyPressListenerLoop:
 				case 'r':
 					resetStats()
 				case 'k': // up
-					increase <- rateIncreaseStep
+					rateChanger <- rateIncreaseStep
 				case 'j':
-					decrease <- rateDecreaseStep
+					rateChanger <- rateDecreaseStep
 				}
 			}
 		case term.EventError:
@@ -370,25 +370,25 @@ keyPressListenerLoop:
 	}
 }
 
-func ticker(rate int, quit <-chan struct{}) (<-chan time.Time, chan<- int, chan<- int) {
+func ticker(rate uint64, quit <-chan struct{}) (<-chan time.Time, chan<- int64) {
 	ticker := make(chan time.Time, 1)
-	increase := make(chan int, 1)
-	decrease := make(chan int, 1)
+	rateChanger := make(chan int64, 1)
 
 	// start main workers
 	go func() {
 		desiredRate.Store(int64(rate))
-		tck := time.Tick(time.Duration(1e9 / desiredRate.Load()))
+		tck := time.NewTicker(time.Duration(1e9 / rate))
 
 		for {
 			select {
-			case v := <-increase:
-				desiredRate.Add(int64(v))
-				tck = time.Tick(time.Duration(1e9 / desiredRate.Load()))
-			case v := <-decrease:
-				desiredRate.Add(int64(-v))
-				tck = time.Tick(time.Duration(1e9 / desiredRate.Load()))
-			case t := <-tck:
+			case r := <-rateChanger:
+				tck.Stop()
+				if newRate := desiredRate.Add(r); newRate > 0 {
+					tck = time.NewTicker(time.Duration(1e9 / newRate))
+				} else {
+					desiredRate.Store(0)
+				}
+			case t := <-tck.C:
 				ticker <- t
 			case <-quit:
 				return
@@ -396,7 +396,7 @@ func ticker(rate int, quit <-chan struct{}) (<-chan time.Time, chan<- int, chan<
 		}
 	}()
 
-	return ticker, increase, decrease
+	return ticker, rateChanger
 }
 
 func getTimingsSlot(now time.Time) ([]counter, []counter) {
@@ -437,7 +437,7 @@ func main() {
 	workers := flag.Uint("workers", 8, "Number of workers")
 	timeout := flag.Duration("timeout", 30*time.Second, "Requests timeout")
 	targets := flag.String("targets", "stdin", "Targets file")
-	rate := flag.Int("rate", 50, "Requests per second")
+	rate := flag.Uint64("rate", 50, "Requests per second")
 	miY := flag.Duration("minY", 0, "min on Y axe (default 0ms)")
 	maY := flag.Duration("maxY", 100*time.Millisecond, "max on Y axe")
 	flag.Parse()
@@ -456,7 +456,7 @@ func main() {
 	initializeTimingsBucket(buckets)
 
 	quit := make(chan struct{}, 1)
-	ticker, increase, decrease := ticker(*rate, quit)
+	ticker, rateChanger := ticker(*rate, quit)
 
 	trgt, err := newTargeter(*targets)
 	if err != nil {
@@ -480,7 +480,7 @@ func main() {
 		reporter(quit)
 	}()
 
-	keyPressListener(increase, decrease)
+	keyPressListener(rateChanger)
 
 	// bye
 	close(quit)
