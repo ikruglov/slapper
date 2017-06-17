@@ -434,7 +434,7 @@ func initializeTimingsBucket(buckets uint) {
 }
 
 func main() {
-	workers := flag.Int("workers", 8, "Number of workers")
+	workers := flag.Uint("workers", 8, "Number of workers")
 	timeout := flag.Duration("timeout", 30*time.Second, "Requests timeout")
 	targets := flag.String("targets", "stdin", "Targets file")
 	rate := flag.Int("rate", 50, "Requests per second")
@@ -465,7 +465,7 @@ func main() {
 
 	// start attackers
 	var wg sync.WaitGroup
-	for i := 0; i < *workers; i++ {
+	for i := uint(0); i < *workers; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
