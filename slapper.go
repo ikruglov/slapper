@@ -125,7 +125,7 @@ func newTargeter(targets string) (*targeter, error) {
 
 		b = bytes.Trim(b, " \t\n")
 		if len(b) == 0 {
-			b = []byte("")
+			body = []byte("")
 		} else if bytes.HasPrefix(b, []byte("$ ")) {
 			body = b[2:]
 
@@ -162,7 +162,7 @@ func (t *targeter) nextRequest() (*http.Request, error) {
 	st := t.requests[idx%len(t.requests)]
 	return http.NewRequest(
 		st.method,
-		string(st.url),
+		st.url,
 		bytes.NewReader(st.body),
 	)
 }
