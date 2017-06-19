@@ -162,7 +162,7 @@ func (t *targeter) nextRequest() (*http.Request, error) {
 	st := t.requests[idx%len(t.requests)]
 	return http.NewRequest(
 		st.method,
-		string(st.url),
+		st.url,
 		bytes.NewReader(st.body),
 	)
 }
