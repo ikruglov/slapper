@@ -125,7 +125,7 @@ func newTargeter(targets string) (*targeter, error) {
 
 		b = bytes.Trim(b, " \t\n")
 		if len(b) == 0 {
-			b = []byte("")
+			body = []byte("")
 		} else if bytes.HasPrefix(b, []byte("$ ")) {
 			body = b[2:]
 
