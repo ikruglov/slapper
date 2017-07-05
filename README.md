@@ -26,6 +26,12 @@ Usage of ./slapper:
         Number of workers (default 8)
 ```
 
+## Key bindings
+* q, ctrl-c - quit
+* r - reset stats
+* k - increase rate by 100 RPS
+* j - decrease rate by 100 RPS
+
 ## Targets syntax
 ```
 GET http://127.0.0.1/_test\n
