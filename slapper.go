@@ -7,6 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"math"
 	"net/http"
 	"os"
@@ -23,6 +24,9 @@ const (
 	movingWindowsSize      = 10 // seconds
 	screenRefreshFrequency = 10 // per second
 	screenRefreshInterval  = time.Second / screenRefreshFrequency
+
+	reservedWidthSpace  = 40
+	reservedHeightSpace = 3
 
 	rateIncreaseStep = 100
 	rateDecreaseStep = -100
@@ -257,7 +261,7 @@ func reporter(quit <-chan struct{}) {
 	}
 
 	colorMultiplier := float64(len(colors)) / float64(buckets)
-	barWidth := int(plotWidth) - 40 // reserve some space on right and left
+	barWidth := int(plotWidth) - reservedWidthSpace // reserve some space on right and left
 
 	ticker := time.Tick(screenRefreshInterval)
 	for {
@@ -464,6 +468,14 @@ func main() {
 
 	plotWidth = terminalWidth
 	plotHeight = terminalHeight - statsLines
+
+	if plotWidth <= reservedWidthSpace {
+		log.Fatal("not enough screen width, min 40 characters required")
+	}
+
+	if plotHeight <= reservedHeightSpace {
+		log.Fatal("not enough screen height, min 3 lines required")
+	}
 
 	minY, maxY = float64(*miY/time.Millisecond), float64(*maY/time.Millisecond)
 	deltaY := maxY - minY
