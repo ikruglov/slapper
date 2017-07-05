@@ -43,9 +43,13 @@ var (
 	// plotting vars
 	plotWidth  uint
 	plotHeight uint
+
+	// first bucket is for requests faster then minY,
+	// last of for ones slower then maxY
 	buckets    uint
 	logBase    float64
 	minY, maxY float64
+	startMs    float64
 )
 
 func resetStats() {
@@ -194,15 +198,19 @@ func attack(trgt *targeter, timeout time.Duration, ch <-chan time.Time, quit <-c
 				}
 				now := time.Now()
 
-				tOk, tBad := getTimingsSlot(now)
-
 				elapsed := now.Sub(start)
 				elapsedMs := float64(elapsed) / float64(time.Millisecond)
-				elapsedBucket := int(math.Log(elapsedMs) / math.Log(logBase))
-				if elapsedBucket >= len(tOk) {
-					elapsedBucket = len(tOk) - 1
-				} else if elapsedBucket < 0 {
+				correctedElapsedMs := elapsedMs - startMs
+				elapsedBucket := int(math.Log(correctedElapsedMs) / math.Log(logBase))
+
+				// first bucket is for requests faster then minY,
+				// last of for ones slower then maxY
+				if elapsedBucket < 0 {
 					elapsedBucket = 0
+				} else if elapsedBucket >= int(buckets)-1 {
+					elapsedBucket = int(buckets) - 1
+				} else {
+					elapsedBucket = elapsedBucket + 1
 				}
 
 				responsesReceived.Add(1)
@@ -213,6 +221,7 @@ func attack(trgt *targeter, timeout time.Duration, ch <-chan time.Time, quit <-c
 				}
 
 				responses[status].Add(1)
+				tOk, tBad := getTimingsSlot(now)
 				if status >= 200 && status < 300 {
 					tOk[elapsedBucket].Add(1)
 				} else {
@@ -296,16 +305,28 @@ func reporter(quit <-chan struct{}) {
 
 			width := float64(barWidth) / float64(max)
 			for bkt := uint(0); bkt < buckets; bkt++ {
-				startMs := math.Pow(logBase, float64(bkt))
-				endMs := math.Pow(logBase, float64(bkt)+1)
-
 				var label string
-				if bkt == buckets-1 {
-					label = fmt.Sprintf("%3.0f+", startMs)
-				} else if endMs > 10 {
-					label = fmt.Sprintf("%3.0f-%3.0f", startMs, endMs)
+				if bkt == 0 {
+					if startMs >= 10 {
+						label = fmt.Sprintf("<%.0f", startMs)
+					} else {
+						label = fmt.Sprintf("<%.1f", startMs)
+					}
+				} else if bkt == buckets-1 {
+					if maxY >= 10 {
+						label = fmt.Sprintf("%3.0f+", maxY)
+					} else {
+						label = fmt.Sprintf("%.1f+", maxY)
+					}
 				} else {
-					label = fmt.Sprintf("%.1f-%.1f", startMs, endMs)
+					beginMs := minY + math.Pow(logBase, float64(bkt-1))
+					endMs := minY + math.Pow(logBase, float64(bkt))
+
+					if endMs >= 10 {
+						label = fmt.Sprintf("%3.0f-%3.0f", beginMs, endMs)
+					} else {
+						label = fmt.Sprintf("%.1f-%.1f", beginMs, endMs)
+					}
 				}
 
 				widthOk := int(float64(tOk[bkt]) * width)
@@ -447,7 +468,8 @@ func main() {
 	minY, maxY = float64(*miY/time.Millisecond), float64(*maY/time.Millisecond)
 	deltaY := maxY - minY
 	buckets = plotHeight
-	logBase = math.Pow(deltaY, 1/float64(buckets))
+	logBase = math.Pow(deltaY, 1/float64(buckets-2))
+	startMs = minY + math.Pow(logBase, 0)
 
 	initializeTimingsBucket(buckets)
 
