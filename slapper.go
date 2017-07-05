@@ -361,7 +361,7 @@ func keyPressListener(rateChanger chan<- int64) {
 	// start keyPress listener
 	err := term.Init()
 	if err != nil {
-		panic(err)
+		log.Fatal(err)
 	}
 
 	defer term.Close()
@@ -386,7 +386,7 @@ keyPressListenerLoop:
 				}
 			}
 		case term.EventError:
-			panic(ev.Err)
+			log.Fatal(ev.Err)
 		}
 	}
 }
@@ -490,7 +490,7 @@ func main() {
 
 	trgt, err := newTargeter(*targets)
 	if err != nil {
-		panic(err)
+		log.Fatal(err)
 	}
 
 	// start attackers
