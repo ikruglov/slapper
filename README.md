@@ -4,6 +4,10 @@ __Simple load testing tool with real-time updated histogram of request timings__
 
 ![slapper](https://raw.githubusercontent.com/ikruglov/slapper/master/img/example.gif)
 
+## Interface
+
+![interface](https://raw.githubusercontent.com/ikruglov/slapper/master/img/interface.png)
+
 ## Usage
 ```bash
 $ ./slapper -help
