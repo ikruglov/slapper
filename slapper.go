@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"crypto/tls"
 	"errors"
 	"flag"
 	"fmt"
@@ -181,6 +182,7 @@ func attack(trgt *targeter, timeout time.Duration, ch <-chan time.Time, quit <-c
 		DisableCompression:  true,
 		MaxIdleConnsPerHost: 100,
 		IdleConnTimeout:     30 * time.Second,
+		TLSClientConfig:     &tls.Config{InsecureSkipVerify: true},
 	}
 
 	client := &http.Client{
