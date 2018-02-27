@@ -8,6 +8,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"log"
 	"math"
@@ -89,12 +90,14 @@ func (c *counter) Store(v int64)     { atomic.StoreInt64((*int64)(c), v) }
 
 type targeter struct {
 	idx      counter
-	requests []struct {
-		method string
-		url    string
-		body   []byte
-	}
-	header http.Header
+	requests []request
+	header   http.Header
+}
+
+type request struct {
+	method string
+	url    string
+	body   []byte
 }
 
 func newTargeter(targets string, base64body bool) (*targeter, error) {
@@ -108,70 +111,78 @@ func newTargeter(targets string, base64body bool) (*targeter, error) {
 	defer f.Close()
 
 	trgt := &targeter{}
+	err = trgt.readTargets(reader, base64body)
 
+	return trgt, err
+}
+
+func (trgt *targeter) readTargets(reader io.Reader, base64body bool) error {
 	// syntax
 	// GET <url>\n
 	// $ <body>\n
 	// \n
 
+	var (
+		method string
+		url    string
+		body   []byte
+	)
+
+	scanner := bufio.NewScanner(reader)
+	var lastLine string
+	var line string
+
 	for {
-		var method string
-		var url, body []byte
-
-		b, err := reader.ReadBytes('\n')
-		if err != nil {
-			break
-		}
-
-		b = bytes.Trim(b, " \t\n")
-		if !bytes.HasPrefix(b, []byte("GET")) {
-			continue
-		}
-
-		method = http.MethodGet
-		url = bytes.TrimLeft(b[3:], " \t\n")
-
-		b, err = reader.ReadBytes('\n')
-		if err != nil {
-			break
-		}
-
-		b = bytes.Trim(b, " \t\n")
-		if len(b) == 0 {
-			body = []byte("")
-		} else if bytes.HasPrefix(b, []byte("$ ")) {
-			body = b[2:]
-			if base64body {
-				dst := make([]byte, base64.StdEncoding.DecodedLen(len(body)))
-				n, err := base64.StdEncoding.Decode(dst, body)
-				if err != nil {
-					return trgt, err
-				}
-				body = dst[0:n]
-			}
-
-			b, err = reader.ReadBytes('\n')
-			if err != nil {
+		if lastLine != "" {
+			line = lastLine
+			lastLine = ""
+		} else {
+			ok := scanner.Scan()
+			if !ok {
 				break
 			}
 
-			if b = bytes.Trim(b, " \t\n"); len(b) != 0 {
-				continue
+			line = strings.TrimSpace(scanner.Text())
+		}
+
+		if line == "" {
+			continue
+		}
+
+		parts := strings.SplitAfterN(line, " ", 2)
+		method = strings.TrimSpace(parts[0])
+		url = strings.TrimSpace(parts[1])
+
+		ok := scanner.Scan()
+		line := strings.TrimSpace(scanner.Text())
+		if !ok {
+			body = []byte{}
+		} else if line == "{}" {
+			body = []byte{}
+		} else if !strings.HasPrefix(line, "$ ") {
+			body = []byte{}
+			lastLine = line
+		} else {
+			line = strings.TrimPrefix(line, "$ ")
+			if base64body {
+				var err error
+				body, err = base64.StdEncoding.DecodeString(line)
+				if err != nil {
+					return err
+				}
+			} else {
+				body = []byte(line)
 			}
 		}
 
-		trgt.requests = append(trgt.requests, struct {
-			method string
-			url    string
-			body   []byte
-		}{
+		trgt.requests = append(trgt.requests, request{
 			method: method,
-			url:    string(url),
+			url:    url,
 			body:   body,
 		})
 	}
 
-	return trgt, nil
+	return nil
 }
 
 func (t *targeter) nextRequest() (*http.Request, error) {
