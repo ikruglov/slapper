@@ -11,7 +11,9 @@ import (
 	"log"
 	"math"
 	"net/http"
+	"net/textproto"
 	"os"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -91,6 +93,7 @@ type targeter struct {
 		url    string
 		body   []byte
 	}
+	header http.Header
 }
 
 func newTargeter(targets string) (*targeter, error) {
@@ -169,11 +172,19 @@ func (t *targeter) nextRequest() (*http.Request, error) {
 
 	idx := int(t.idx.Add(1))
 	st := t.requests[idx%len(t.requests)]
-	return http.NewRequest(
+
+	req, err := http.NewRequest(
 		st.method,
 		st.url,
 		bytes.NewReader(st.body),
 	)
+	if err != nil {
+		return req, err
+	}
+
+	req.Header = t.header
+
+	return req, err
 }
 
 func attack(trgt *targeter, timeout time.Duration, ch <-chan time.Time, quit <-chan struct{}) {
@@ -456,6 +467,19 @@ func initializeTimingsBucket(buckets uint) {
 	}()
 }
 
+type arrayFlags []string
+
+func (i *arrayFlags) String() string {
+	return fmt.Sprintf("+%v", *i)
+}
+
+func (i *arrayFlags) Set(value string) error {
+	*i = append(*i, value)
+	return nil
+}
+
+var headerFlags arrayFlags
+
 func main() {
 	workers := flag.Uint("workers", 8, "Number of workers")
 	timeout := flag.Duration("timeout", 30*time.Second, "Requests timeout")
@@ -463,6 +487,7 @@ func main() {
 	rate := flag.Uint64("rate", 50, "Requests per second")
 	miY := flag.Duration("minY", 0, "min on Y axe (default 0ms)")
 	maY := flag.Duration("maxY", 100*time.Millisecond, "max on Y axe")
+	flag.Var(&headerFlags, "H", "HTTP header 'key: value' set on all requests. Repeat for more than one header.")
 	flag.Parse()
 
 	terminalWidth, _ = terminal.Width()
@@ -493,6 +518,19 @@ func main() {
 	trgt, err := newTargeter(*targets)
 	if err != nil {
 		log.Fatal(err)
+	}
+
+	if len(headerFlags) > 0 {
+		headers := strings.Join(headerFlags, "\r\n")
+		headers += "\r\n\r\n"                                                  // Need an extra \r\n at the end
+		tp := textproto.NewReader(bufio.NewReader(strings.NewReader(headers))) // Never change, Go
+
+		mimeHeader, err := tp.ReadMIMEHeader()
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		trgt.header = http.Header(mimeHeader)
 	}
 
 	// start attackers
