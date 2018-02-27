@@ -20,6 +20,8 @@ Usage of ./slapper:
         Requests per second (default 50)
   -targets string
         Targets file (default "stdin")
+  -base64body bool
+        Bodies in target file are base64-encoded (default false)
   -timeout duration
         Requests timeout (default 30s)
   -workers int

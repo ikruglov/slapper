@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"crypto/tls"
+	"encoding/base64"
 	"errors"
 	"flag"
 	"fmt"
@@ -96,7 +97,7 @@ type targeter struct {
 	header http.Header
 }
 
-func newTargeter(targets string) (*targeter, error) {
+func newTargeter(targets string, base64body bool) (*targeter, error) {
 	var reader *bufio.Reader
 	f, err := os.Open(targets)
 	if err != nil {
@@ -140,6 +141,14 @@ func newTargeter(targets string) (*targeter, error) {
 			body = []byte("")
 		} else if bytes.HasPrefix(b, []byte("$ ")) {
 			body = b[2:]
+			if base64body {
+				dst := make([]byte, base64.StdEncoding.DecodedLen(len(body)))
+				n, err := base64.StdEncoding.Decode(dst, body)
+				if err != nil {
+					return trgt, err
+				}
+				body = dst[0:n]
+			}
 
 			b, err = reader.ReadBytes('\n')
 			if err != nil {
@@ -484,6 +493,7 @@ func main() {
 	workers := flag.Uint("workers", 8, "Number of workers")
 	timeout := flag.Duration("timeout", 30*time.Second, "Requests timeout")
 	targets := flag.String("targets", "", "Targets file")
+	base64body := flag.Bool("base64body", false, "Bodies in targets file are base64-encoded")
 	rate := flag.Uint64("rate", 50, "Requests per second")
 	miY := flag.Duration("minY", 0, "min on Y axe (default 0ms)")
 	maY := flag.Duration("maxY", 100*time.Millisecond, "max on Y axe")
@@ -515,7 +525,7 @@ func main() {
 	quit := make(chan struct{}, 1)
 	ticker, rateChanger := ticker(*rate, quit)
 
-	trgt, err := newTargeter(*targets)
+	trgt, err := newTargeter(*targets, *base64body)
 	if err != nil {
 		log.Fatal(err)
 	}
