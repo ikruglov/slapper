@@ -102,13 +102,23 @@ type request struct {
 
 func newTargeter(targets string, base64body bool) (*targeter, error) {
 	var reader *bufio.Reader
-	f, err := os.Open(targets)
-	if err != nil {
-		return nil, err
+	var f *os.File
+	var err error
+
+	if targets == "" {
+		f = os.Stdin
+	} else {
+		f, err = os.Open(targets)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	reader = bufio.NewReader(f)
-	defer f.Close()
+
+	if f != os.Stdin {
+		defer f.Close()
+	}
 
 	trgt := &targeter{}
 	err = trgt.readTargets(reader, base64body)
