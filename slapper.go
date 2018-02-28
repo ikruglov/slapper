@@ -195,13 +195,13 @@ func (trgt *targeter) readTargets(reader io.Reader, base64body bool) error {
 	return nil
 }
 
-func (t *targeter) nextRequest() (*http.Request, error) {
-	if len(t.requests) == 0 {
+func (trgt *targeter) nextRequest() (*http.Request, error) {
+	if len(trgt.requests) == 0 {
 		return nil, errors.New("no requests")
 	}
 
-	idx := int(t.idx.Add(1))
-	st := t.requests[idx%len(t.requests)]
+	idx := int(trgt.idx.Add(1))
+	st := trgt.requests[idx%len(trgt.requests)]
 
 	req, err := http.NewRequest(
 		st.method,
@@ -212,7 +212,7 @@ func (t *targeter) nextRequest() (*http.Request, error) {
 		return req, err
 	}
 
-	req.Header = t.header
+	req.Header = trgt.header
 
 	return req, err
 }
