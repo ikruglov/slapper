@@ -101,7 +101,6 @@ type request struct {
 }
 
 func newTargeter(targets string, base64body bool) (*targeter, error) {
-	var reader *bufio.Reader
 	var f *os.File
 	var err error
 
@@ -112,16 +111,11 @@ func newTargeter(targets string, base64body bool) (*targeter, error) {
 		if err != nil {
 			return nil, err
 		}
-	}
-
-	reader = bufio.NewReader(f)
-
-	if f != os.Stdin {
 		defer f.Close()
 	}
 
 	trgt := &targeter{}
-	err = trgt.readTargets(reader, base64body)
+	err = trgt.readTargets(f, base64body)
 
 	return trgt, err
 }
@@ -212,7 +206,11 @@ func (trgt *targeter) nextRequest() (*http.Request, error) {
 		return req, err
 	}
 
-	req.Header = trgt.header
+	for key, headers := range trgt.header {
+		for _, header := range headers {
+			req.Header.Add(key, header)
+		}
+	}
 
 	return req, err
 }

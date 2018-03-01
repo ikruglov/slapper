@@ -1,8 +1,8 @@
 package main
 
 import (
+    "bytes"
 	"bufio"
-	"fmt"
 	"strings"
 	"testing"
 )
@@ -201,7 +201,7 @@ func TestNewTargeter(t *testing.T) {
 				break
 			}
 
-			if !bytesEq(test.expected[req].body, trgt.requests[req].body) {
+			if !bytes.Equal(test.expected[req].body, trgt.requests[req].body) {
 				t.Errorf(`Bad request body
 Expected	%+v
 Got		%+v"`, test.expected[req].body, trgt.requests[req].body)
@@ -213,20 +213,6 @@ Got		%+v"`, test.expected[req].body, trgt.requests[req].body)
 	}
 
 	if failed > 0 {
-		fmt.Printf("Failed %d/%d tests\n", failed, len(tests))
+		t.Logf("Failed %d/%d tests\n", failed, len(tests))
 	}
-}
-
-func bytesEq(a, b []byte) bool {
-	if len(a) != len(b) {
-		return false
-	}
-
-	for i := 0; i < len(a); i++ {
-		if a[i] != b[i] {
-			return false
-		}
-	}
-
-	return true
 }
