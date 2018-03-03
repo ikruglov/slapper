@@ -4,14 +4,18 @@ import (
 	"bufio"
 	"bytes"
 	"crypto/tls"
+	"encoding/base64"
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"log"
 	"math"
 	"net/http"
+	"net/textproto"
 	"os"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -86,94 +90,129 @@ func (c *counter) Store(v int64)     { atomic.StoreInt64((*int64)(c), v) }
 
 type targeter struct {
 	idx      counter
-	requests []struct {
-		method string
-		url    string
-		body   []byte
-	}
+	requests []request
+	header   http.Header
 }
 
-func newTargeter(targets string) (*targeter, error) {
-	var reader *bufio.Reader
-	f, err := os.Open(targets)
-	if err != nil {
-		return nil, err
+type request struct {
+	method string
+	url    string
+	body   []byte
+}
+
+func newTargeter(targets string, base64body bool) (*targeter, error) {
+	var f *os.File
+	var err error
+
+	if targets == "" {
+		f = os.Stdin
+	} else {
+		f, err = os.Open(targets)
+		if err != nil {
+			return nil, err
+		}
+		defer f.Close()
 	}
 
-	reader = bufio.NewReader(f)
-	defer f.Close()
-
 	trgt := &targeter{}
+	err = trgt.readTargets(f, base64body)
 
+	return trgt, err
+}
+
+func (trgt *targeter) readTargets(reader io.Reader, base64body bool) error {
 	// syntax
 	// GET <url>\n
 	// $ <body>\n
 	// \n
 
+	var (
+		method string
+		url    string
+		body   []byte
+	)
+
+	scanner := bufio.NewScanner(reader)
+	var lastLine string
+	var line string
+
 	for {
-		var method string
-		var url, body []byte
-
-		b, err := reader.ReadBytes('\n')
-		if err != nil {
-			break
-		}
-
-		b = bytes.Trim(b, " \t\n")
-		if !bytes.HasPrefix(b, []byte("GET")) {
-			continue
-		}
-
-		method = http.MethodGet
-		url = bytes.TrimLeft(b[3:], " \t\n")
-
-		b, err = reader.ReadBytes('\n')
-		if err != nil {
-			break
-		}
-
-		b = bytes.Trim(b, " \t\n")
-		if len(b) == 0 {
-			body = []byte("")
-		} else if bytes.HasPrefix(b, []byte("$ ")) {
-			body = b[2:]
-
-			b, err = reader.ReadBytes('\n')
-			if err != nil {
+		if lastLine != "" {
+			line = lastLine
+			lastLine = ""
+		} else {
+			ok := scanner.Scan()
+			if !ok {
 				break
 			}
 
-			if b = bytes.Trim(b, " \t\n"); len(b) != 0 {
-				continue
+			line = strings.TrimSpace(scanner.Text())
+		}
+
+		if line == "" {
+			continue
+		}
+
+		parts := strings.SplitAfterN(line, " ", 2)
+		method = strings.TrimSpace(parts[0])
+		url = strings.TrimSpace(parts[1])
+
+		ok := scanner.Scan()
+		line := strings.TrimSpace(scanner.Text())
+		if !ok {
+			body = []byte{}
+		} else if line == "{}" {
+			body = []byte{}
+		} else if !strings.HasPrefix(line, "$ ") {
+			body = []byte{}
+			lastLine = line
+		} else {
+			line = strings.TrimPrefix(line, "$ ")
+			if base64body {
+				var err error
+				body, err = base64.StdEncoding.DecodeString(line)
+				if err != nil {
+					return err
+				}
+			} else {
+				body = []byte(line)
 			}
 		}
 
-		trgt.requests = append(trgt.requests, struct {
-			method string
-			url    string
-			body   []byte
-		}{
+		trgt.requests = append(trgt.requests, request{
 			method: method,
-			url:    string(url),
+			url:    url,
 			body:   body,
 		})
 	}
 
-	return trgt, nil
+	return nil
 }
 
-func (t *targeter) nextRequest() (*http.Request, error) {
-	if len(t.requests) == 0 {
+func (trgt *targeter) nextRequest() (*http.Request, error) {
+	if len(trgt.requests) == 0 {
 		return nil, errors.New("no requests")
 	}
 
-	idx := int(t.idx.Add(1))
-	st := t.requests[idx%len(t.requests)]
-	return http.NewRequest(
+	idx := int(trgt.idx.Add(1))
+	st := trgt.requests[idx%len(trgt.requests)]
+
+	req, err := http.NewRequest(
 		st.method,
 		st.url,
 		bytes.NewReader(st.body),
 	)
+	if err != nil {
+		return req, err
+	}
+
+	for key, headers := range trgt.header {
+		for _, header := range headers {
+			req.Header.Add(key, header)
+		}
+	}
+
+	return req, err
 }
 
 func attack(trgt *targeter, timeout time.Duration, ch <-chan time.Time, quit <-chan struct{}) {
@@ -456,13 +495,28 @@ func initializeTimingsBucket(buckets uint) {
 	}()
 }
 
+type arrayFlags []string
+
+func (i *arrayFlags) String() string {
+	return fmt.Sprintf("+%v", *i)
+}
+
+func (i *arrayFlags) Set(value string) error {
+	*i = append(*i, value)
+	return nil
+}
+
+var headerFlags arrayFlags
+
 func main() {
 	workers := flag.Uint("workers", 8, "Number of workers")
 	timeout := flag.Duration("timeout", 30*time.Second, "Requests timeout")
 	targets := flag.String("targets", "", "Targets file")
+	base64body := flag.Bool("base64body", false, "Bodies in targets file are base64-encoded")
 	rate := flag.Uint64("rate", 50, "Requests per second")
 	miY := flag.Duration("minY", 0, "min on Y axe (default 0ms)")
 	maY := flag.Duration("maxY", 100*time.Millisecond, "max on Y axe")
+	flag.Var(&headerFlags, "H", "HTTP header 'key: value' set on all requests. Repeat for more than one header.")
 	flag.Parse()
 
 	terminalWidth, _ = terminal.Width()
@@ -490,9 +544,22 @@ func main() {
 	quit := make(chan struct{}, 1)
 	ticker, rateChanger := ticker(*rate, quit)
 
-	trgt, err := newTargeter(*targets)
+	trgt, err := newTargeter(*targets, *base64body)
 	if err != nil {
 		log.Fatal(err)
+	}
+
+	if len(headerFlags) > 0 {
+		headers := strings.Join(headerFlags, "\r\n")
+		headers += "\r\n\r\n"                                                  // Need an extra \r\n at the end
+		tp := textproto.NewReader(bufio.NewReader(strings.NewReader(headers))) // Never change, Go
+
+		mimeHeader, err := tp.ReadMIMEHeader()
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		trgt.header = http.Header(mimeHeader)
 	}
 
 	// start attackers

@@ -20,6 +20,8 @@ Usage of ./slapper:
         Requests per second (default 50)
   -targets string
         Targets file (default "stdin")
+  -base64body bool
+        Bodies in target file are base64-encoded (default false)
   -timeout duration
         Requests timeout (default 30s)
   -workers int
@@ -33,11 +35,20 @@ Usage of ./slapper:
 * j - decrease rate by 100 RPS
 
 ## Targets syntax
-```
-GET http://127.0.0.1/_test\n
-$ {"test":"payload"}\n
-\n
-```
+
+The targets file is line-based. Its syntax is:
+
+	HTTP_METHOD url
+	$ body
+
+The body line is optional. The rules for what is considered to be a body
+line are:
+
+1. If something starts with `$ ` (dollar-sign and space), it's a body
+2. If the line is literally `{}`, it's an empty body
+
+A missing body line is taken to mean an empty request body. Point (2) is there
+for backwards-compatibility.
 
 ## Acknowledgement
 * Idea and initial implementation is by @sparky
