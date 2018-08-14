@@ -12,20 +12,23 @@ __Simple load testing tool with real-time updated histogram of request timings__
 ```bash
 $ ./slapper -help
 Usage of ./slapper:
+  -H value
+    	HTTP header 'key: value' set on all requests. Repeat for more than one header.
+  -base64body
+    	Bodies in targets file are base64-encoded
   -maxY duration
-        max on Y axe (default 100ms)
+    	max on Y axe (default 100ms)
   -minY duration
-        min on Y axe (default 1ms)
-  -rate int
-        Requests per second (default 50)
+    	min on Y axe (default 0ms)
+  -rate uint
+    	Requests per second (default 50)
   -targets string
-        Targets file (default "stdin")
-  -base64body bool
-        Bodies in target file are base64-encoded (default false)
+    	Targets file
   -timeout duration
-        Requests timeout (default 30s)
-  -workers int
-        Number of workers (default 8)
+    	Requests timeout (default 30s)
+  -workers uint
+    	Number of workers (default 8)
+
 ```
 
 ## Key bindings
