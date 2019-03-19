@@ -215,7 +215,7 @@ func (trgt *targeter) nextRequest() (*http.Request, error) {
 	return req, err
 }
 
-func attack(trgt *targeter, timeout time.Duration, ch <-chan time.Time, quit <-chan struct{}) {
+func attack(trgt *targeter, timeout time.Duration, ch <-chan time.Time, stats chan<- respInfo, quit <-chan struct{}) {
 	tr := &http.Transport{
 		DisableKeepAlives:   false,
 		DisableCompression:  true,
@@ -260,6 +260,13 @@ func attack(trgt *targeter, timeout time.Duration, ch <-chan time.Time, quit <-c
 
 				responsesReceived.Add(1)
 
+				if stats != nil {
+					select {
+					case stats <- respInfo{code: response.StatusCode, durationMs: int(elapsedMs)}:
+					case <-quit:
+					}
+				}
+
 				status := 0
 				if err == nil {
 					status = response.StatusCode
@@ -288,7 +295,7 @@ func reporter(quit <-chan struct{}) {
 	var currentRate counter
 	go func() {
 		var lastSent int64
-		for _ = range time.Tick(time.Second) {
+		for range time.Tick(time.Second) {
 			curr := requestsSent.Load()
 			currentRate.Store(curr - lastSent)
 			lastSent = curr
@@ -508,6 +515,43 @@ func (i *arrayFlags) Set(value string) error {
 
 var headerFlags arrayFlags
 
+type respInfo struct {
+	code       int
+	durationMs int
+}
+
+// writeStats writes response statistics to specified file.
+// The file is in following CSV format: reponseCode, responseTimeMs
+func writeStats(fileName string, stats <-chan respInfo, quit <-chan struct{}) {
+	f, err := os.Create(fileName)
+	if err != nil {
+		log.Printf("error: could not open file for writing: %+v", err)
+		return
+	}
+	defer func() {
+		cerr := f.Close()
+		if cerr != nil {
+			log.Printf("error while closing the file: %+v", err)
+		}
+	}()
+
+	w := bufio.NewWriter(f)
+
+	for {
+		select {
+		case info := <-stats:
+			_, err = w.WriteString(fmt.Sprintf("%d, %d\n", info.code, info.durationMs))
+			if err != nil {
+				log.Printf("error while writing to file: %+v", err)
+				return
+			}
+		case <-quit:
+			w.Flush()
+			return
+		}
+	}
+}
+
 func main() {
 	workers := flag.Uint("workers", 8, "Number of workers")
 	timeout := flag.Duration("timeout", 30*time.Second, "Requests timeout")
@@ -517,6 +561,7 @@ func main() {
 	miY := flag.Duration("minY", 0, "min on Y axe (default 0ms)")
 	maY := flag.Duration("maxY", 100*time.Millisecond, "max on Y axe")
 	flag.Var(&headerFlags, "H", "HTTP header 'key: value' set on all requests. Repeat for more than one header.")
+	outFile := flag.String("out", "", "Write response data to a file.")
 	flag.Parse()
 
 	terminalWidth, _ = terminal.Width()
@@ -562,13 +607,25 @@ func main() {
 		trgt.header = http.Header(mimeHeader)
 	}
 
-	// start attackers
 	var wg sync.WaitGroup
+
+	// launch writing to a file if `out` command arg is passed
+	var stats chan respInfo
+	if *outFile != "" {
+		stats = make(chan respInfo)
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			writeStats(*outFile, stats, quit)
+		}()
+	}
+
+	// start attackers
 	for i := uint(0); i < *workers; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			attack(trgt, *timeout, ticker, quit)
+			attack(trgt, *timeout, ticker, stats, quit)
 		}()
 	}
 
