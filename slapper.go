@@ -220,7 +220,7 @@ func attack(trgt *targeter, timeout time.Duration, ch <-chan time.Time, stats ch
 		DisableKeepAlives:   false,
 		DisableCompression:  true,
 		MaxIdleConnsPerHost: 100,
-		IdleConnTimeout:     10 * time.Second,
+		IdleConnTimeout:     30 * time.Second,
 		TLSClientConfig:     &tls.Config{InsecureSkipVerify: true},
 	}
 
@@ -260,9 +260,13 @@ func attack(trgt *targeter, timeout time.Duration, ch <-chan time.Time, stats ch
 
 				responsesReceived.Add(1)
 
-				if stats != nil && response != nil {
+				if stats != nil {
+					code := 0
+					if err == nil && response != nil {
+						code = response.StatusCode
+					}
 					select {
-					case stats <- respInfo{code: response.StatusCode, durationMs: int(elapsedMs)}:
+					case stats <- respInfo{code: code, durationMs: int(elapsedMs)}:
 					case <-quit:
 					}
 				}
