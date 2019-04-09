@@ -208,7 +208,11 @@ func (trgt *targeter) nextRequest() (*http.Request, error) {
 
 	for key, headers := range trgt.header {
 		for _, header := range headers {
-			req.Header.Add(key, header)
+			if key == "Host" {
+				req.Host = header;
+			} else {
+				req.Header.Add(key, header)
+			}
 		}
 	}
 
