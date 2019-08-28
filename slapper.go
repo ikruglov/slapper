@@ -209,7 +209,7 @@ func (trgt *targeter) nextRequest() (*http.Request, error) {
 	for key, headers := range trgt.header {
 		for _, header := range headers {
 			if key == "Host" {
-				req.Host = header;
+				req.Host = header
 			} else {
 				req.Header.Add(key, header)
 			}
@@ -292,7 +292,7 @@ func reporter(quit <-chan struct{}) {
 	var currentRate counter
 	go func() {
 		var lastSent int64
-		for _ = range time.Tick(time.Second) {
+		for range time.Tick(time.Second) {
 			curr := requestsSent.Load()
 			currentRate.Store(curr - lastSent)
 			lastSent = curr
