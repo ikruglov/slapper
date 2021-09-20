@@ -12,6 +12,7 @@ import (
 	"io/ioutil"
 	"log"
 	"math"
+	"math/rand"
 	"net/http"
 	"net/textproto"
 	"os"
@@ -189,12 +190,15 @@ func (trgt *targeter) readTargets(reader io.Reader, base64body bool) error {
 	return nil
 }
 
-func (trgt *targeter) nextRequest() (*http.Request, error) {
+func (trgt *targeter) nextRequest(randomOrder bool) (*http.Request, error) {
 	if len(trgt.requests) == 0 {
 		return nil, errors.New("no requests")
 	}
 
 	idx := int(trgt.idx.Add(1))
+	if randomOrder {
+		idx = rand.Int()
+	}
 	st := trgt.requests[idx%len(trgt.requests)]
 
 	req, err := http.NewRequest(
@@ -219,7 +223,7 @@ func (trgt *targeter) nextRequest() (*http.Request, error) {
 	return req, err
 }
 
-func attack(trgt *targeter, timeout time.Duration, ch <-chan time.Time, quit <-chan struct{}) {
+func attack(trgt *targeter, randomOrder bool, timeout time.Duration, ch <-chan time.Time, quit <-chan struct{}) {
 	tr := &http.Transport{
 		DisableKeepAlives:   false,
 		DisableCompression:  true,
@@ -236,7 +240,7 @@ func attack(trgt *targeter, timeout time.Duration, ch <-chan time.Time, quit <-c
 	for {
 		select {
 		case <-ch:
-			if request, err := trgt.nextRequest(); err == nil {
+			if request, err := trgt.nextRequest(randomOrder); err == nil {
 				requestsSent.Add(1)
 
 				start := time.Now()
@@ -517,6 +521,7 @@ func main() {
 	timeout := flag.Duration("timeout", 30*time.Second, "Requests timeout")
 	targets := flag.String("targets", "", "Targets file")
 	base64body := flag.Bool("base64body", false, "Bodies in targets file are base64-encoded")
+	randomOrder := flag.Bool("randomOrder", false, "Targets in file are requested in a random order")
 	rate := flag.Uint64("rate", 50, "Requests per second")
 	miY := flag.Duration("minY", 0, "min on Y axe (default 0ms)")
 	maY := flag.Duration("maxY", 100*time.Millisecond, "max on Y axe")
@@ -572,7 +577,7 @@ func main() {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			attack(trgt, *timeout, ticker, quit)
+			attack(trgt, *randomOrder, *timeout, ticker, quit)
 		}()
 	}
 
